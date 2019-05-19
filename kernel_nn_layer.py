@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # @Author: Mengji Zhang
 # @Date:   2019-05-18 21:12:00
-# @Last Modified by:   zmj
-# @Last Modified time: 2019-05-19 13:55:59
+# @Last Modified by:   WIN10
+# @Last Modified time: 2019-05-19 17:41:20
 # @E-mail: zmj_xy@sjtu.edu.cn
 
 from torch import nn
@@ -63,18 +63,45 @@ class GaussianKernelConv(nn.Conv2d):
 		out_h,out_w=self.compute_outshape(height,width)
 
 		x_unfold=F.unfold(x,self.kernel_size,self.dilation,self.padding,self.stride)
-		# print("unfold: ",x_unfold.shape)
 		w=self.weight
 		w=w.view(self.out_channels,-1)
-		# print("w: ",w.shape)
 
 		minus=x_unfold[:,None,:,:]-w[None,:,:,None]
-		minus=minus.sum(dim=2)**2
-		# print("minus: ",minus.shape)
+		minus=minus**2
+		minus=minus.sum(dim=2)
 		
 		minus=torch.exp(-self.gamma*minus)
 
-		# kernel_out=(self.cp+mul)**self.dp
+		kernel_out=F.fold(minus,(out_h,out_w),(1,1))
+		return kernel_out
+
+class LpNormKernelConv(nn.Conv2d):
+	def __init__(self,in_channels,out_channels,kernel_size,p,stride=1,padding=0,dilation=1,groups=1,device="cuda"):
+		super(LpNormKernelConv,self).__init__(in_channels,out_channels,kernel_size,stride,padding,dilation,groups)
+		self.p=p
+
+	def compute_outshape(self,h,w):
+		kernel_h=self.kernel_size[0]+(self.kernel_size[0]-1)*(self.dilation[0]-1)
+		kernel_w=self.kernel_size[1]+(self.kernel_size[1]-1)*(self.dilation[1]-1)
+
+		out_h=(h+2*self.padding[0]-(kernel_h-1)-1)//self.stride[0]+1
+		out_w=(w+2*self.padding[1]-(kernel_w-1)-1)//self.stride[1]+1
+		return out_h,out_w
+	def forward(self,x):
+		batch,_,height,width=x.shape
+		out_h,out_w=self.compute_outshape(height,width)
+
+		x_unfold=F.unfold(x,self.kernel_size,self.dilation,self.padding,self.stride)
+		w=self.weight
+		w=w.view(self.out_channels,-1)
+
+		minus=x_unfold[:,None,:,:]-w[None,:,:,None]
+		minus=minus**self.p
+
+		minus=minus.sum(dim=2)
+		
+
+
 		kernel_out=F.fold(minus,(out_h,out_w),(1,1))
 		return kernel_out
 if __name__=="__main__":
@@ -113,7 +140,7 @@ if __name__=="__main__":
                 transforms.ToTensor(),
             ])),batch_size=128,shuffle=False)
 	conv1=nn.Conv2d(1,10,5)
-	kernel_conv=GaussianKernelConv(10,20,5)
+	kernel_conv=LpNormKernelConv(10,20,5,p=1)
 	conv2=nn.Conv2d(10,20,5)
 	conv2.weight=kernel_conv.weight
 	conv2.bias=kernel_conv.bias
