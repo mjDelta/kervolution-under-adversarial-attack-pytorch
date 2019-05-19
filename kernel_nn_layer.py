@@ -2,7 +2,7 @@
 # @Author: Mengji Zhang
 # @Date:   2019-05-18 21:12:00
 # @Last Modified by:   WIN10
-# @Last Modified time: 2019-05-19 17:41:20
+# @Last Modified time: 2019-05-19 21:14:17
 # @E-mail: zmj_xy@sjtu.edu.cn
 
 from torch import nn
@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 class PolynomialKernelConv(nn.Conv2d):
 	def __init__(self,in_channels,out_channels,kernel_size,stride=1,padding=0,dilation=1,groups=1,
-		cp=0.5,dp=2,cp_require_grad=False,dp_require_grad=True,device="cuda"):
+		cp=0.5,dp=2,cp_require_grad=False,device="cuda"):
 		super(PolynomialKernelConv,self).__init__(in_channels,out_channels,kernel_size,stride,padding,dilation,groups)
 		if cp_require_grad:
 			self.cp=Variable(torch.FloatTensor([cp]),requires_grad=cp_require_grad).to(device)
@@ -38,7 +38,7 @@ class PolynomialKernelConv(nn.Conv2d):
 			mul=mul.transpose(1,2)
 			mul+=self.bias
 			mul=mul.transpose(1,2)
-
+		mul=(self.cp+mul)**self.dp
 		kernel_out=F.fold(mul,(out_h,out_w),(1,1))
 		return kernel_out
 
@@ -100,47 +100,19 @@ class LpNormKernelConv(nn.Conv2d):
 
 		minus=minus.sum(dim=2)
 		
-
-
 		kernel_out=F.fold(minus,(out_h,out_w),(1,1))
 		return kernel_out
 if __name__=="__main__":
 	from torchvision import datasets,transforms
 	device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-	# class KNNPolyNet(nn.Module):
-	#     def __init__(self):
-	#         super(KNNPolyNet,self).__init__()
-	#         self.conv1=PolynomialKernelConv(1,10,kernel_size=5)
-	#         self.conv2=PolynomialKernelConv(10,20,kernel_size=5)
-	#         self.conv2_drop=nn.Dropout2d()
-	#         self.fc1=nn.Linear(320,50)
-	#         self.fc2=nn.Linear(50,10)
-	#     def forward(self,x):
-	#         x=F.relu(F.max_pool2d(self.conv1(x),2))
-	#         x=F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)),2))
-	#         x=x.view(-1,320)
-	#         x=F.relu(self.fc1(x))
-	#         x=F.dropout(x,training=self.training)
-	#         x=F.relu(self.fc2(x))
-	#         return F.log_softmax(x,dim=1)
-	# test_loader=torch.utils.data.DataLoader(
- #    datasets.MNIST("data",train=False,download=True,transform=transforms.Compose([
- #                transforms.ToTensor(),
- #            ])),batch_size=128,shuffle=False)
-	# knn=KNNPolyNet().to(device)
-	# for d,t in test_loader:
-	    
-	#     output=knn(d.to(device))
-	#     print("output:",output.shape)
-	#     break
 
 	test_loader=torch.utils.data.DataLoader(
     datasets.MNIST("data",train=False,download=True,transform=transforms.Compose([
                 transforms.ToTensor(),
             ])),batch_size=128,shuffle=False)
 	conv1=nn.Conv2d(1,10,5)
-	kernel_conv=LpNormKernelConv(10,20,5,p=1)
+	kernel_conv=GaussianKernelConv(10,20,5,gamma=1)
 	conv2=nn.Conv2d(10,20,5)
 	conv2.weight=kernel_conv.weight
 	conv2.bias=kernel_conv.bias
